@@ -16,11 +16,11 @@ A small self-hosted service for publishing self-contained interactive HTML artif
 
 ## Runtime
 
-- Service: Docker Swarm service `artifact-viewer`
+- Dokploy project: `Artifact Viewer`
+- Dokploy application: `Viewer` (`artifact-viewer-onszu6`)
+- Source: `https://github.com/Vegapunk3000/artifact-viewer`
 - Persistent data: `/srv/artifact-viewer/artifacts.sqlite3`
-- Public origin: `https://artifacts.144.91.91.81.sslip.io`
-- Traefik config: `/etc/dokploy/traefik/dynamic/artifact-viewer.yml`
-- Docker secret: `artifact-viewer-publish-token`
+- Public origin: `https://artifacts.timi.click`
 - Hermes credentials: `~/.hermes/secrets/artifact-viewer.env` (`0600`)
 - Installed plugin: `~/.hermes/plugins/artifact-viewer`
 - Installed skill: `~/.hermes/skills/productivity/artifact-viewer`
