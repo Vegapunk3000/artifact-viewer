@@ -1,0 +1,19 @@
+http:
+  routers:
+    artifact-viewer-http:
+      rule: Host(`artifacts.144.91.91.81.sslip.io`)
+      service: artifact-viewer
+      middlewares: [redirect-to-https]
+      entryPoints: [web]
+    artifact-viewer-https:
+      rule: Host(`artifacts.144.91.91.81.sslip.io`)
+      service: artifact-viewer
+      entryPoints: [websecure]
+      tls:
+        certResolver: letsencrypt
+  services:
+    artifact-viewer:
+      loadBalancer:
+        servers:
+          - url: http://artifact-viewer:8080
+        passHostHeader: true

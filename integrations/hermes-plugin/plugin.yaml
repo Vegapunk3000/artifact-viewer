@@ -1,0 +1,7 @@
+name: artifact-viewer
+version: "1.0.0"
+description: "Publish self-contained HTML artifacts to Timi's sandboxed Artifact Viewer and return shareable HTTPS links."
+author: "Shaka / Timi"
+provides_tools:
+  - artifact_viewer
+dependencies: []
