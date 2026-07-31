@@ -82,6 +82,7 @@ def artifact_viewer(args: dict[str, Any], **_: Any) -> str:
                 "html": html,
                 "tags": args.get("tags") or [],
                 "source": str(args.get("source", "hermes")).strip() or "hermes",
+                "name": str(args.get("name", "")).strip() or None,
             },
         )
         return json.dumps({"published": True, **result}, ensure_ascii=False)
@@ -89,6 +90,17 @@ def artifact_viewer(args: dict[str, Any], **_: Any) -> str:
     if action == "list":
         limit = max(1, min(int(args.get("limit", 20)), 200))
         return json.dumps(_request("GET", f"/api/artifacts?limit={limit}"), ensure_ascii=False)
+
+    if action == "names":
+        limit = max(1, min(int(args.get("limit", 200)), 200))
+        return json.dumps(_request("GET", f"/api/names?limit={limit}"), ensure_ascii=False)
+
+    if action == "release_name":
+        name = str(args.get("name", "")).strip()
+        if not name:
+            raise ValueError("name is required for release_name")
+        _request("DELETE", f"/api/names/{name}")
+        return json.dumps({"released": True, "name": name}, ensure_ascii=False)
 
     if action == "delete":
         artifact_id = str(args.get("artifact_id", "")).strip()
@@ -106,12 +118,13 @@ SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["publish", "list", "delete"], "default": "publish"},
+            "action": {"type": "string", "enum": ["publish", "list", "names", "release_name", "delete"], "default": "publish"},
             "path": {"type": "string", "description": "Absolute path to a self-contained .html/.htm file for publish."},
             "title": {"type": "string", "description": "Human-readable artifact title."},
             "description": {"type": "string", "description": "Short description shown above the artifact."},
             "tags": {"type": "array", "items": {"type": "string"}},
             "source": {"type": "string", "description": "Origin such as german-learning or finance."},
+            "name": {"type": "string", "description": "Optional stable lowercase name. Republishing with the same name moves that named URL to the new immutable version."},
             "artifact_id": {"type": "string", "description": "Artifact ID for delete."},
             "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
         },

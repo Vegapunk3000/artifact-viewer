@@ -17,7 +17,7 @@ Turn browser-native output into an unlisted HTTPS link that works from Discord.
    - run any project tests;
    - open locally in a browser when interaction or layout matters;
    - check browser console errors.
-5. Call `artifact_viewer` with `action="publish"`, the absolute HTML path, a precise title, a short description, useful tags, and a source label.
+5. Call `artifact_viewer` with `action="publish"`, the absolute HTML path, a precise title, a short description, useful tags, a source label, and an optional stable lowercase `name` when the user explicitly wants a maintained link. A named publish returns `/named/{name}` and moves that alias on later publishes; the returned `/a/{id}` remains the immutable version link.
 6. Open the returned URL and verify the deployed artifact—not merely the local file. Return the HTTPS URL to the user.
 
 ## Tool examples
@@ -75,7 +75,7 @@ Verify the visual pass in a browser at desktop and mobile widths. Exercise every
 - The service only accepts `.html`/`.htm` files up to 2 MB.
 - Public artifact links under `/a/{id}` serve the HTML directly with document-level CSP sandboxing and cannot be embedded; use `/preview/{id}` only when you explicitly need the legacy metadata/iframe shell.
 - The publish API token stays in the active Hermes profile's protected secret file. Never copy it into an artifact or response.
-- Prefer immutable republishing: publish a new artifact when the content changes, then share the new link. Delete stale sensitive artifacts explicitly.
+- Prefer immutable republishing for ordinary artifacts. When the user explicitly names an artifact, publish a new immutable version and move its `/named/{name}` alias; never destroy previous `/a/{id}` links. Release named aliases separately when requested. Delete stale sensitive artifacts explicitly.
 
 ## Fallback
 

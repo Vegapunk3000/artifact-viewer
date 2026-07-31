@@ -28,6 +28,7 @@ def main() -> None:
     parser.add_argument("--description", default="")
     parser.add_argument("--tag", action="append", default=[])
     parser.add_argument("--source", default="hermes")
+    parser.add_argument("--name", help="stable lowercase hyphenated artifact name")
     args = parser.parse_args()
     path = Path(args.path).expanduser().resolve()
     if not path.is_file() or path.suffix.lower() not in {".html", ".htm"}:
@@ -41,6 +42,7 @@ def main() -> None:
         "html": path.read_text(encoding="utf-8"),
         "tags": args.tag,
         "source": args.source,
+        "name": args.name,
     }).encode("utf-8")
     request = urllib.request.Request(
         url + "/api/artifacts",
@@ -50,7 +52,12 @@ def main() -> None:
     )
     with urllib.request.urlopen(request, timeout=30) as response:
         result = json.load(response)
-    print(result["url"])
+    print(json.dumps({
+        "published": True,
+        "immutable_url": result["url"],
+        "named_url": (result.get("named_urls") or [None])[0],
+        "name": (result.get("names") or [None])[0],
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":

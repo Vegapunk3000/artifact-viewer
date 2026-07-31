@@ -5,6 +5,7 @@ import hmac
 import html as html_lib
 import json
 import os
+import re
 import secrets
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager
@@ -26,6 +27,15 @@ if not PUBLISH_TOKEN and PUBLISH_TOKEN_FILE:
     if token_path.is_file():
         PUBLISH_TOKEN = token_path.read_text(encoding="utf-8").strip()
 MAX_HTML_BYTES = int(os.getenv("ARTIFACT_MAX_HTML_BYTES", "2000000"))
+NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+){0,7}$")
+RESERVED_NAMES = {"api", "a", "named", "preview", "content", "download", "health", "docs", "redoc", "openapi"}
+
+
+def validate_name(value: str) -> str:
+    name = value.strip().lower()
+    if len(name) > 64 or not NAME_RE.fullmatch(name) or name in RESERVED_NAMES:
+        raise ValueError("name must be 1-64 lowercase letters/numbers separated by single hyphens")
+    return name
 
 
 
@@ -39,7 +49,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Artifact Viewer",
-    version="1.0.0",
+    version="1.1.0",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -53,6 +63,7 @@ class ArtifactCreate(BaseModel):
     html: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list, max_length=20)
     source: str = Field(default="hermes", max_length=100)
+    name: str | None = Field(default=None, max_length=64)
 
     @field_validator("html")
     @classmethod
@@ -60,6 +71,11 @@ class ArtifactCreate(BaseModel):
         if len(value.encode("utf-8")) > MAX_HTML_BYTES:
             raise ValueError(f"HTML exceeds {MAX_HTML_BYTES} bytes")
         return value
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str | None) -> str | None:
+        return validate_name(value) if value is not None else None
 
     @field_validator("tags")
     @classmethod
@@ -104,6 +120,18 @@ def init_db() -> None:
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_artifacts_created_at ON artifacts(created_at DESC)"
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS artifact_names (
+                name TEXT PRIMARY KEY,
+                artifact_id TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_artifact_names_artifact_id ON artifact_names(artifact_id)"
+        )
 
 
 def require_token(authorization: Annotated[str | None, Header()] = None) -> None:
@@ -120,8 +148,18 @@ def get_artifact(artifact_id: str) -> sqlite3.Row:
     return row
 
 
+def names_for_artifact(artifact_id: str) -> list[str]:
+    with db() as connection:
+        rows = connection.execute(
+            "SELECT name FROM artifact_names WHERE artifact_id = ? ORDER BY name",
+            (artifact_id,),
+        ).fetchall()
+    return [row["name"] for row in rows]
+
+
 def metadata(row: sqlite3.Row) -> dict:
-    return {
+    names = names_for_artifact(row["id"])
+    result = {
         "id": row["id"],
         "title": row["title"],
         "description": row["description"],
@@ -133,6 +171,10 @@ def metadata(row: sqlite3.Row) -> dict:
         "url": f"{PUBLIC_BASE_URL}/a/{row['id']}",
         "download_url": f"{PUBLIC_BASE_URL}/download/{row['id']}",
     }
+    if names:
+        result["names"] = names
+        result["named_urls"] = [f"{PUBLIC_BASE_URL}/named/{name}" for name in names]
+    return result
 
 
 @app.get("/health")
@@ -157,6 +199,12 @@ def create_artifact(payload: ArtifactCreate) -> JSONResponse:
             "INSERT INTO artifacts (id,title,description,html,tags,source,sha256,created_at) VALUES (?,?,?,?,?,?,?,?)",
             (artifact_id, payload.title.strip(), payload.description.strip(), payload.html, json.dumps(payload.tags), payload.source.strip(), digest, created_at),
         )
+        if payload.name:
+            connection.execute(
+                "INSERT INTO artifact_names (name,artifact_id,updated_at) VALUES (?,?,?) "
+                "ON CONFLICT(name) DO UPDATE SET artifact_id = excluded.artifact_id, updated_at = excluded.updated_at",
+                (payload.name, artifact_id, created_at),
+            )
         row = connection.execute("SELECT * FROM artifacts WHERE id = ?", (artifact_id,)).fetchone()
     return JSONResponse(metadata(row), status_code=201)
 
@@ -169,20 +217,73 @@ def list_artifacts(limit: int = 50) -> dict:
     return {"artifacts": [metadata(row) for row in rows]}
 
 
+@app.get("/api/names", dependencies=[Depends(require_token)])
+def list_names(limit: int = 200) -> dict:
+    limit = max(1, min(limit, 200))
+    with db() as connection:
+        rows = connection.execute(
+            "SELECT n.name, n.updated_at, a.id, a.title, a.sha256 "
+            "FROM artifact_names n JOIN artifacts a ON a.id = n.artifact_id "
+            "ORDER BY n.name LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return {
+        "names": [
+            {
+                "name": row["name"],
+                "title": row["title"],
+                "artifact_id": row["id"],
+                "sha256": row["sha256"],
+                "updated_at": row["updated_at"],
+                "url": f"{PUBLIC_BASE_URL}/named/{row['name']}",
+                "immutable_url": f"{PUBLIC_BASE_URL}/a/{row['id']}",
+            }
+            for row in rows
+        ]
+    }
+
+
 @app.delete("/api/artifacts/{artifact_id}", status_code=204, dependencies=[Depends(require_token)])
 def delete_artifact(artifact_id: str) -> Response:
     with db() as connection:
+        connection.execute("DELETE FROM artifact_names WHERE artifact_id = ?", (artifact_id,))
         cursor = connection.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
     if cursor.rowcount == 0:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return Response(status_code=204)
 
 
-@app.get("/a/{artifact_id}")
-def view_artifact(artifact_id: str) -> Response:
-    row = get_artifact(artifact_id)
+@app.delete("/api/names/{name}", status_code=204, dependencies=[Depends(require_token)])
+def release_name(name: str) -> Response:
+    try:
+        normalized = validate_name(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     with db() as connection:
-        connection.execute("UPDATE artifacts SET views = views + 1 WHERE id = ?", (artifact_id,))
+        cursor = connection.execute("DELETE FROM artifact_names WHERE name = ?", (normalized,))
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Named artifact not found")
+    return Response(status_code=204)
+
+
+def get_named_artifact(name: str) -> sqlite3.Row:
+    try:
+        normalized = validate_name(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Named artifact not found") from exc
+    with db() as connection:
+        row = connection.execute(
+            "SELECT a.* FROM artifact_names n JOIN artifacts a ON a.id = n.artifact_id WHERE n.name = ?",
+            (normalized,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Named artifact not found")
+    return row
+
+
+def direct_artifact_response(row: sqlite3.Row, *, cache_control: str = "public, max-age=300") -> Response:
+    with db() as connection:
+        connection.execute("UPDATE artifacts SET views = views + 1 WHERE id = ?", (row["id"],))
     return Response(
         content=row["html"],
         media_type="text/html",
@@ -190,9 +291,19 @@ def view_artifact(artifact_id: str) -> Response:
             "Content-Security-Policy": DIRECT_ARTIFACT_CSP,
             "Referrer-Policy": "no-referrer",
             "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "public, max-age=300",
+            "Cache-Control": cache_control,
         },
     )
+
+
+@app.get("/a/{artifact_id}")
+def view_artifact(artifact_id: str) -> Response:
+    return direct_artifact_response(get_artifact(artifact_id))
+
+
+@app.get("/named/{name}")
+def view_named_artifact(name: str) -> Response:
+    return direct_artifact_response(get_named_artifact(name), cache_control="no-cache")
 
 
 @app.get("/preview/{artifact_id}", response_class=HTMLResponse)

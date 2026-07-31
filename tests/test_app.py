@@ -70,3 +70,70 @@ def test_list_and_delete_are_authenticated(tmp_path, monkeypatch):
         assert client.get("/api/artifacts").status_code == 401
         assert client.delete(f"/api/artifacts/{artifact_id}", headers=auth).status_code == 204
         assert client.get(f"/a/{artifact_id}").status_code == 404
+
+
+def test_named_artifact_updates_in_place_and_preserves_immutable_versions(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    auth = {"Authorization": "Bearer test-token"}
+    with client:
+        first = client.post(
+            "/api/artifacts",
+            headers=auth,
+            json={"title": "First", "html": "<h1>first</h1>", "name": "little-helpers"},
+        )
+        assert first.status_code == 201
+        first_data = first.json()
+        assert first_data["names"] == ["little-helpers"]
+        assert first_data["named_urls"] == ["https://artifacts.example.test/named/little-helpers"]
+        first_id = first_data["id"]
+
+        named = client.get("/named/little-helpers")
+        assert named.status_code == 200
+        assert named.text == "<h1>first</h1>"
+        assert named.headers["cache-control"] == "no-cache"
+
+        second = client.post(
+            "/api/artifacts",
+            headers=auth,
+            json={"title": "Second", "html": "<h1>second</h1>", "name": "LITTLE-HELPERS"},
+        )
+        assert second.status_code == 201
+        second_data = second.json()
+        assert second_data["id"] != first_id
+
+        assert client.get("/named/little-helpers").text == "<h1>second</h1>"
+        assert client.get(f"/a/{first_id}").text == "<h1>first</h1>"
+
+        names = client.get("/api/names", headers=auth)
+        assert names.status_code == 200
+        assert names.json()["names"][0]["artifact_id"] == second_data["id"]
+
+        assert client.delete("/api/names/little-helpers", headers=auth).status_code == 204
+        assert client.get("/named/little-helpers").status_code == 404
+        assert client.get(f"/a/{second_data['id']}").status_code == 200
+
+
+def test_named_artifact_rejects_invalid_or_reserved_names(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    auth = {"Authorization": "Bearer test-token"}
+    with client:
+        for name in ["Bad Name", "../secret", "api", "a", "-starts-with-dash", "ends-with-dash-"]:
+            response = client.post(
+                "/api/artifacts",
+                headers=auth,
+                json={"title": "Invalid", "html": "<p>x</p>", "name": name},
+            )
+            assert response.status_code == 422, name
+
+
+def test_deleting_artifact_releases_its_name(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    auth = {"Authorization": "Bearer test-token"}
+    with client:
+        created = client.post(
+            "/api/artifacts",
+            headers=auth,
+            json={"title": "Named", "html": "<p>x</p>", "name": "temporary"},
+        ).json()
+        assert client.delete(f"/api/artifacts/{created['id']}", headers=auth).status_code == 204
+        assert client.get("/named/temporary").status_code == 404
