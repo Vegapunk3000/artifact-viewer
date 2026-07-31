@@ -178,8 +178,25 @@ def delete_artifact(artifact_id: str) -> Response:
     return Response(status_code=204)
 
 
-@app.get("/a/{artifact_id}", response_class=HTMLResponse)
-def view_artifact(artifact_id: str, request: Request) -> HTMLResponse:
+@app.get("/a/{artifact_id}")
+def view_artifact(artifact_id: str) -> Response:
+    row = get_artifact(artifact_id)
+    with db() as connection:
+        connection.execute("UPDATE artifacts SET views = views + 1 WHERE id = ?", (artifact_id,))
+    return Response(
+        content=row["html"],
+        media_type="text/html",
+        headers={
+            "Content-Security-Policy": DIRECT_ARTIFACT_CSP,
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "public, max-age=300",
+        },
+    )
+
+
+@app.get("/preview/{artifact_id}", response_class=HTMLResponse)
+def preview_artifact(artifact_id: str, request: Request) -> HTMLResponse:
     row = get_artifact(artifact_id)
     with db() as connection:
         connection.execute("UPDATE artifacts SET views = views + 1 WHERE id = ?", (artifact_id,))
@@ -209,6 +226,22 @@ ARTIFACT_CSP = "; ".join([
     "frame-src https:",
     "form-action https:",
     "base-uri 'none'",
+])
+
+# Direct artifact pages do not have the iframe sandbox to provide the origin boundary.
+# Keep equivalent restrictions at the document level and prevent re-embedding.
+DIRECT_ARTIFACT_CSP = "; ".join([
+    "default-src 'none'",
+    "sandbox allow-scripts allow-forms allow-modals allow-downloads",
+    "script-src 'unsafe-inline' https:",
+    "style-src 'unsafe-inline' https:",
+    "img-src data: blob: https:",
+    "font-src data: https:",
+    "connect-src https:",
+    "media-src data: blob: https:",
+    "form-action https:",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
 ])
 
 

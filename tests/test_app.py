@@ -37,11 +37,18 @@ def test_publish_view_sandbox_and_download(tmp_path, monkeypatch):
         assert data["tags"] == ["test", "chart"]
         artifact_id = data["id"]
 
-        viewer = client.get(f"/a/{artifact_id}")
-        assert viewer.status_code == 200
-        assert 'sandbox="allow-scripts allow-forms allow-modals allow-downloads"' in viewer.text
-        assert "allow-same-origin" not in viewer.text
-        assert payload["html"] not in viewer.text
+        direct = client.get(f"/a/{artifact_id}")
+        assert direct.status_code == 200
+        assert direct.text == payload["html"]
+        assert "<iframe" not in direct.text
+        assert "sandbox allow-scripts allow-forms allow-modals allow-downloads" in direct.headers["content-security-policy"]
+        assert "frame-ancestors 'none'" in direct.headers["content-security-policy"]
+
+        preview = client.get(f"/preview/{artifact_id}")
+        assert preview.status_code == 200
+        assert f"/content/{artifact_id}" in preview.text
+        assert 'sandbox="allow-scripts allow-forms allow-modals allow-downloads"' in preview.text
+        assert "allow-same-origin" not in preview.text
 
         content = client.get(f"/content/{artifact_id}")
         assert content.text == payload["html"]
