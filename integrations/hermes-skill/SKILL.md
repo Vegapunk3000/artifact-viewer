@@ -51,7 +51,7 @@ Delete:
 
 - Published links are unlisted, not authenticated. Anyone holding a link can view it. Never publish secrets, credentials, private keys, raw `.env` content, or unnecessary personal data.
 - The service only accepts `.html`/`.htm` files up to 2 MB.
-- Artifacts run inside an iframe sandbox without `allow-same-origin` or top-navigation privileges. Do not weaken that boundary to make an artifact work; redesign the artifact instead.
+- Public artifact links under `/a/{id}` serve the HTML directly with document-level CSP sandboxing and cannot be embedded; use `/preview/{id}` only when you explicitly need the legacy metadata/iframe shell.
 - The publish API token stays in the active Hermes profile's protected secret file. Never copy it into an artifact or response.
 - Prefer immutable republishing: publish a new artifact when the content changes, then share the new link. Delete stale sensitive artifacts explicitly.
 
