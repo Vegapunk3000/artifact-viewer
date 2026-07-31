@@ -84,12 +84,13 @@ def test_named_artifact_updates_in_place_and_preserves_immutable_versions(tmp_pa
         assert first.status_code == 201
         first_data = first.json()
         assert first_data["names"] == ["little-helpers"]
-        assert first_data["named_urls"] == ["https://artifacts.example.test/named/little-helpers"]
+        assert first_data["named_urls"] == ["https://artifacts.example.test/n/little-helpers"]
         first_id = first_data["id"]
 
         named = client.get("/named/little-helpers")
         assert named.status_code == 200
         assert named.text == "<h1>first</h1>"
+        assert client.get("/n/little-helpers").text == "<h1>first</h1>"
         assert named.headers["cache-control"] == "no-cache"
 
         second = client.post(
@@ -111,6 +112,21 @@ def test_named_artifact_updates_in_place_and_preserves_immutable_versions(tmp_pa
         assert client.delete("/api/names/little-helpers", headers=auth).status_code == 204
         assert client.get("/named/little-helpers").status_code == 404
         assert client.get(f"/a/{second_data['id']}").status_code == 200
+
+
+def test_existing_artifact_can_be_assigned_a_name(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, monkeypatch)
+    auth = {"Authorization": "Bearer test-token"}
+    with client:
+        created = client.post("/api/artifacts", headers=auth, json={"title": "Existing", "html": "<p>existing</p>"}).json()
+        assigned = client.put(
+            "/api/names/little-helpers",
+            headers=auth,
+            json={"artifact_id": created["id"]},
+        )
+        assert assigned.status_code == 200
+        assert assigned.json()["named_urls"] == ["https://artifacts.example.test/n/little-helpers"]
+        assert client.get("/n/little-helpers").text == "<p>existing</p>"
 
 
 def test_named_artifact_rejects_invalid_or_reserved_names(tmp_path, monkeypatch):

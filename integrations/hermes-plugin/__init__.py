@@ -102,6 +102,14 @@ def artifact_viewer(args: dict[str, Any], **_: Any) -> str:
         _request("DELETE", f"/api/names/{name}")
         return json.dumps({"released": True, "name": name}, ensure_ascii=False)
 
+    if action == "assign_name":
+        name = str(args.get("name", "")).strip()
+        artifact_id = str(args.get("artifact_id", "")).strip()
+        if not name or not artifact_id:
+            raise ValueError("name and artifact_id are required for assign_name")
+        result = _request("PUT", f"/api/names/{name}", payload={"artifact_id": artifact_id})
+        return json.dumps({"assigned": True, **result}, ensure_ascii=False)
+
     if action == "delete":
         artifact_id = str(args.get("artifact_id", "")).strip()
         if not artifact_id:
@@ -118,7 +126,7 @@ SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["publish", "list", "names", "release_name", "delete"], "default": "publish"},
+            "action": {"type": "string", "enum": ["publish", "list", "names", "release_name", "assign_name", "delete"], "default": "publish"},
             "path": {"type": "string", "description": "Absolute path to a self-contained .html/.htm file for publish."},
             "title": {"type": "string", "description": "Human-readable artifact title."},
             "description": {"type": "string", "description": "Short description shown above the artifact."},

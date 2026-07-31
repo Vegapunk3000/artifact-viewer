@@ -5,7 +5,7 @@ A small self-hosted service for publishing self-contained interactive HTML artif
 ## What it does
 
 - authenticated publish/list/delete API;
-- optional stable named links at `/named/{name}` that move to the latest published version;
+- optional stable named links at `/n/{name}` that move to the latest published version;
 - unlisted, high-entropy immutable links;
 - SQLite metadata and content persistence;
 - responsive viewer shell (kept at `/preview/{id}` for debugging);
@@ -38,9 +38,9 @@ docker build -t artifact-viewer:1.0.2 .
 
 ## API
 
-`POST /api/artifacts` requires the bearer token and accepts `title`, `description`, `html`, `tags`, `source`, and an optional lowercase hyphenated `name`. Without `name`, it returns only an immutable random artifact URL. With `name`, it also returns `/named/{name}`; publishing another artifact with that same name atomically moves the named URL to the new artifact while preserving every old `/a/{id}` URL.
+`POST /api/artifacts` requires the bearer token and accepts `title`, `description`, `html`, `tags`, `source`, and an optional lowercase hyphenated `name`. Without `name`, it returns only an immutable random artifact URL. With `name`, it also returns `/n/{name}`; publishing another artifact with that same name atomically moves the named URL to the new artifact while preserving every old `/a/{id}` URL.
 
-`GET /api/artifacts`, `GET /api/names`, `DELETE /api/artifacts/{id}`, and `DELETE /api/names/{name}` require the same bearer token. Public artifact links under `/a/{id}` serve the HTML directly with document-level CSP sandboxing. Named links under `/named/{name}` serve the current HTML directly with `Cache-Control: no-cache`, so updates are picked up without changing the URL. The legacy metadata/iframe shell is available at `/preview/{id}`; `/content/{id}` remains the raw HTML compatibility endpoint. Links are intentionally unlisted rather than login-gated.
+`GET /api/artifacts`, `GET /api/names`, `DELETE /api/artifacts/{id}`, and `DELETE /api/names/{name}` require the same bearer token. Public artifact links under `/a/{id}` serve the HTML directly with document-level CSP sandboxing. Named links under `/n/{name}` serve the current HTML directly with `Cache-Control: no-cache`; `/named/{name}` remains as a compatibility alias. The legacy metadata/iframe shell is available at `/preview/{id}`; `/content/{id}` remains the raw HTML compatibility endpoint. Links are intentionally unlisted rather than login-gated.
 
 ## Security model
 

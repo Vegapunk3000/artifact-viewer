@@ -88,6 +88,10 @@ class ArtifactCreate(BaseModel):
         return cleaned
 
 
+class NameAssignment(BaseModel):
+    artifact_id: str = Field(min_length=1, max_length=100)
+
+
 @contextmanager
 def db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -173,7 +177,7 @@ def metadata(row: sqlite3.Row) -> dict:
     }
     if names:
         result["names"] = names
-        result["named_urls"] = [f"{PUBLIC_BASE_URL}/named/{name}" for name in names]
+        result["named_urls"] = [f"{PUBLIC_BASE_URL}/n/{name}" for name in names]
     return result
 
 
@@ -235,12 +239,31 @@ def list_names(limit: int = 200) -> dict:
                 "artifact_id": row["id"],
                 "sha256": row["sha256"],
                 "updated_at": row["updated_at"],
-                "url": f"{PUBLIC_BASE_URL}/named/{row['name']}",
+                "url": f"{PUBLIC_BASE_URL}/n/{row['name']}",
                 "immutable_url": f"{PUBLIC_BASE_URL}/a/{row['id']}",
             }
             for row in rows
         ]
     }
+
+
+@app.put("/api/names/{name}", dependencies=[Depends(require_token)])
+def assign_name(name: str, payload: NameAssignment) -> JSONResponse:
+    try:
+        normalized = validate_name(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    updated_at = datetime.now(timezone.utc).isoformat()
+    with db() as connection:
+        row = connection.execute("SELECT * FROM artifacts WHERE id = ?", (payload.artifact_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        connection.execute(
+            "INSERT INTO artifact_names (name,artifact_id,updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(name) DO UPDATE SET artifact_id = excluded.artifact_id, updated_at = excluded.updated_at",
+            (normalized, payload.artifact_id, updated_at),
+        )
+    return JSONResponse(metadata(row))
 
 
 @app.delete("/api/artifacts/{artifact_id}", status_code=204, dependencies=[Depends(require_token)])
@@ -301,7 +324,8 @@ def view_artifact(artifact_id: str) -> Response:
     return direct_artifact_response(get_artifact(artifact_id))
 
 
-@app.get("/named/{name}")
+@app.get("/n/{name}")
+@app.get("/named/{name}", include_in_schema=False)
 def view_named_artifact(name: str) -> Response:
     return direct_artifact_response(get_named_artifact(name), cache_control="no-cache")
 
