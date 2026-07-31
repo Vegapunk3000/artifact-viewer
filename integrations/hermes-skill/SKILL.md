@@ -47,6 +47,28 @@ Delete:
 {"action": "delete", "artifact_id": "the-returned-id"}
 ```
 
+## Visual explanation pass
+
+Before treating a visual artifact as finished, inspect each major section and ask: **would a diagram, simulation, matrix, timeline, or controlled motion communicate this more clearly than paragraphs alone?** Add visual treatment only where it carries information.
+
+Use this hierarchy:
+
+- **Architecture / systems:** show ownership, boundaries, and communication paths with labeled SVG or HTML diagrams. For important flows, let the user select a scenario and animate a small packet through the real path (for example: user message → control plane → tenant runtime → helper profile → provider → persisted result).
+- **Competitive landscapes:** use a capability matrix or positioned map when comparison is central. Add restrained competitor wordmarks/marks or source-linked visual references where they improve recognition; never turn the page into a logo wall.
+- **Processes / lifecycles:** use timelines, step sequences, or state transitions when order matters.
+- **Quantitative sections:** use a chart, equation, or proportion bar when it exposes a relationship that prose hides.
+- **Narrative / principles:** keep them typographic. Not every paragraph needs a component.
+
+Motion rules:
+
+- Use motion to reveal causality, sequence, state, or emphasis—not to decorate empty space.
+- One orchestrated animation is better than many unrelated effects.
+- Anime.js is allowed for meaningful interaction or staged flow animation. For self-contained artifacts, bundle the minified library inline or use CSS/vanilla JS when that is enough; do not create a fragile CDN dependency by default.
+- Every animation must have a static readable state, keyboard-accessible controls, and a `prefers-reduced-motion` fallback.
+- Do not respond to a request for richer visuals by covering the document in cards, pills, gradients, or looping motion. Preserve long-form reading measure and let each visual earn its space.
+
+Verify the visual pass in a browser at desktop and mobile widths. Exercise every diagram control and confirm that motion changes a meaningful state rather than only toggling a class.
+
 ## Security boundary
 
 - Published links are unlisted, not authenticated. Anyone holding a link can view it. Never publish secrets, credentials, private keys, raw `.env` content, or unnecessary personal data.
